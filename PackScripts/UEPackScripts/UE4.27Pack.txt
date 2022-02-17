@@ -1,0 +1,66 @@
+pipeline {
+  agent any
+  parameters {
+    string(name: 'UESourceGiteaServerBranchName', defaultValue: 'nenly.4.27', description: 'Name of the Gitea remote repository branch that houses the source version engine')
+    string(name: 'UESourceGiteaServerAddress', defaultValue: 'http://192.168.1.133:3000/wei.liao/UnrealEngine.git', description: 'The address of the Gitea remote repository where the source version engine is stored')
+    string(name: 'UESource_AbsPath', defaultValue: 'C:\\UnrealEngine', description: 'Local source version unreal Engine absolute path')
+    string(name: 'RunUATScript_AbsPath', defaultValue: 'C:\\UnrealEngine\\Engine\\Build\\BatchFiles\\RunUAT.bat', description: 'RunUAT.bat Script absolute path')
+    string(name: 'InstalledEngineBuildScript_AbsPath', defaultValue: 'C:\\UnrealEngine\\Engine\\Build\\InstalledEngineBuild.xml', description: 'InstalledEngineBuil Script absolute path')
+    string(name: 'PackagedUEPrefixName', defaultValue: 'Nenly_4.27', description: 'The prefix name of the locally packaged Unreal engine is usually the version number and the suffix is BUILD_NUMBER'  )
+    string(name: 'RegisterUEScript_AbsPath', defaultValue: 'C:\\JenkinsAutomationScripts\\RegisterUEScripts\\RegisterUE.vbs', description: 'Absolute path to the script that was pulled from the Gitea server to register unreal Engine ')
+    string(name: 'PackagedEngine_AbsPath', defaultValue: 'C:\\${PackagedUEPrefixName}_${BUILD_NUMBER}', description: 'The location of the packed Unreal Engine')
+  }
+    stages {
+      stage('Pull the UESource and JenkinsAutomationScripts from the  gitea server') {
+      parallel {
+        stage('Pull the latest source version of the engine from the  gitea server') {
+          steps {
+              checkout([$class: 'GitSCM', branches: [[name: '${UESourceGiteaServerBranchName}']], extensions: [[$class: 'CloneOption', depth: 1, noTags: false, reference: '', shallow: true, timeout: 60], [$class: 'RelativeTargetDirectory', relativeTargetDir: '${UESource_AbsPath}']], userRemoteConfigs: [[url: '${UESourceGiteaServerAddress}']]])
+          }
+          post {
+            success {
+                echo '**********Pull unreal source code successful！**********'
+            }
+            failure {
+              echo '**********Failed to pull unreal source code！**********'
+            }
+          }
+        }
+        stage('Pull the JenkinsAutomationScripts from the  gitea server') {
+          steps {
+            checkout([$class: 'GitSCM', branches: [[name: 'master']], extensions: [[$class: 'CloneOption', depth: 1, noTags: false, reference: '', shallow: true, timeout: 60], [$class: 'RelativeTargetDirectory', relativeTargetDir: 'C:\\JenkinsAutomationScripts']], userRemoteConfigs: [[url: 'http://192.168.1.133:3000/wei.liao/JenkinsAutomationScripts.git']]])
+          }
+          post {
+            success {
+                echo '**********Pulling Jenkins automatic script succeeded！**********'
+            }
+            failure {
+              echo '**********Failed to pull Jenkins automatic script！**********'
+            }
+          }
+        }
+      }
+      }
+
+        stage('Package UE') {
+      steps {
+        bat '''
+             md %PackagedEngine_AbsPath%'''
+        bat '''
+             %RunUATScript_AbsPath% BuildGraph -target="Make Installed Build Win64" -script=%InstalledEngineBuildScript_AbsPath% -set:VS2019=true -set:WithMac=false -set:WithAndroid=false -set:WithIOS=false -set:WithTVOS=false  -set:WithLinux=false -set:WithDDC=false -set:WithWin32=false -set:WithLumin=false -set:WithHoloLens=false -set:WithLinuxAArch64=false  -set:GameConfigurations=Development  -set:BuiltDirectory="%PackagedEngine_AbsPath%"'''
+      }
+      post {
+        success {
+          echo '**********Package Unreal Engine successfully！**********'
+          bat 'copy %RegisterUEScript_AbsPath% %PackagedEngine_AbsPath%\\Windows\\RegisterUE.vbs'
+        }
+          failure {
+              echo '**********Failed to package Unreal Engine！**********'
+          }
+      }
+        }
+    }
+}
+
+
+
